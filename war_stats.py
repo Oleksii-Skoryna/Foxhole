@@ -8,6 +8,7 @@ import numpy as np
 import re
 import time
 import logging
+import os
 from difflib import get_close_matches
 import pygetwindow as gw
 from datetime import datetime
@@ -30,23 +31,24 @@ log = logging.getLogger(__name__)
 # ----------------------------
 # CALIBRATION CONSTANTS
 # ----------------------------
-NAME_CROP_X1 = 940      # name column left edge (absolute screen coords)
-NAME_CROP_Y1 = 335      # name column top edge
-NAME_CROP_X2 = 1145      # name column right edge
-NAME_CROP_Y2 = 675      # name column bottom edge
+NAME_CROP_X1 = 940
+NAME_CROP_Y1 = 335
+NAME_CROP_X2 = 1145
+NAME_CROP_Y2 = 675
 
-MENU_OFFSET_X = 32     # x offset from click point to Activity Log menu item
-MENU_OFFSET_Y = 42     # y offset from click point to Activity Log menu item
+MENU_OFFSET_X = 32
+MENU_OFFSET_Y = 42
 
-# Activity log panel crop (your existing coords from war_stats.py)
 LOG_CROP_X1 = 660
 LOG_CROP_Y1 = 125
 LOG_CROP_X2 = 1250
 LOG_CROP_Y2 = 650
 
-MOVE_DURATION = 0.2         # seconds for all mouse movements
-SCROLLS_PER_PAGE = 1320     # scroll notches for one full regiment screen
+MOVE_DURATION = 0.2
+SCROLLS_PER_PAGE = 1316
 
+# Fixed output file — same file every run so resume works
+OUTPUT_CSV = "regiment_activity.csv"
 
 EXPECTED_KEYS = [
     "Enemy Player Damage",
@@ -68,6 +70,31 @@ EXPECTED_KEYS = [
 
 
 # ----------------------------
+# CSV HELPERS
+# ----------------------------
+def load_seen_names(csv_path: str) -> set:
+    """Load already-processed player names from existing CSV."""
+    if not os.path.exists(csv_path):
+        log.info(f"No existing CSV found at '{csv_path}', starting fresh.")
+        return set()
+    df = pd.read_csv(csv_path)
+    if "player_name" not in df.columns:
+        log.warning("CSV exists but has no 'player_name' column, starting fresh.")
+        return set()
+    names = set(df["player_name"].dropna().tolist())
+    log.info(f"Loaded {len(names)} already-processed players from '{csv_path}'.")
+    return names
+
+
+def append_to_csv(record: dict, csv_path: str):
+    """Append a single record to CSV, writing header only if file doesn't exist yet."""
+    df = pd.DataFrame([record])
+    write_header = not os.path.exists(csv_path)
+    df.to_csv(csv_path, mode="a", header=write_header, index=False)
+    log.debug(f"Written '{record['player_name']}' to CSV.")
+
+
+# ----------------------------
 # MOUSE HELPERS
 # ----------------------------
 def smooth_click(x, y):
@@ -84,20 +111,6 @@ def smooth_move(x, y):
 # ----------------------------
 # SCROLL HELPERS
 # ----------------------------
-def scroll_to_page(page: int):
-    """After reopening regiment screen, scroll back down to the current page."""
-    if page == 0:
-        return
-    total_scrolls = page * SCROLLS_PER_PAGE
-    log.info(f"Restoring scroll position to page {page} ({total_scrolls} notches)...")
-    cx = (NAME_CROP_X1 + NAME_CROP_X2) // 2
-    cy = (NAME_CROP_Y1 + NAME_CROP_Y2) // 2
-    smooth_move(cx, cy)
-    pyautogui.scroll(-total_scrolls)
-    time.sleep(0.3)
-    log.info("Scroll position restored.")
-
-
 def scroll_down_one_page():
     log.debug(f"Scrolling down one page ({SCROLLS_PER_PAGE} notches)...")
     cx = (NAME_CROP_X1 + NAME_CROP_X2) // 2
@@ -200,6 +213,7 @@ def ocr_activity_log(player_name: str, debug=False) -> dict:
     Missing fields are set to None with a warning logged.
     """
     log.debug(f"OCR-ing activity log for '{player_name}'...")
+    # Move mouse away from the log panel so it doesn't appear in the screenshot
     screenshot = ImageGrab.grab()
     img = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2BGR)
     crop = img[LOG_CROP_Y1:LOG_CROP_Y2, LOG_CROP_X1:LOG_CROP_X2]
@@ -213,7 +227,6 @@ def ocr_activity_log(player_name: str, debug=False) -> dict:
 
     parsed = parse_text(text)
 
-    # Build result with None for any missing fields
     result = {}
     missing = []
     for key in EXPECTED_KEYS:
@@ -236,19 +249,21 @@ def ocr_activity_log(player_name: str, debug=False) -> dict:
 # ----------------------------
 # MAIN LOOP
 # ----------------------------
-def scrape_regiment() -> pd.DataFrame:
+def scrape_regiment():
     log.info("Focusing Foxhole window...")
     windows = gw.getWindowsWithTitle("War")
     if not windows:
         log.error("Foxhole (War.exe) not found. Make sure the game is running.")
-        return pd.DataFrame()
+        return
     windows[0].activate()
     time.sleep(1)
     log.info("Foxhole window focused.")
 
-    records = []
-    seen_names = set()
+    # Load already-processed names from CSV to allow resuming
+    seen_names = load_seen_names(OUTPUT_CSV)
+
     partial_names = []
+    total_written = 0
     page = 0
 
     while True:
@@ -261,11 +276,14 @@ def scrape_regiment() -> pd.DataFrame:
             log.info("No new players detected. End of regiment list reached.")
             break
 
-        log.info(f"{len(new_players)} new players on this page.")
+        skipped = len(players) - len(new_players)
+        if skipped:
+            log.info(f"Skipping {skipped} already-processed player(s) on this page.")
+        log.info(f"{len(new_players)} new players to process on this page.")
 
         for player in new_players:
             name = player["name"]
-            click_y = player["screen_y"] - 5
+            click_y = player["screen_y"] - 6
             click_x = (NAME_CROP_X1 + NAME_CROP_X2) // 2
 
             log.info(f"[{len(seen_names) + 1}] Processing: '{name}' at y={click_y}")
@@ -276,9 +294,10 @@ def scrape_regiment() -> pd.DataFrame:
 
             # Click Activity Log
             smooth_click(click_x + MENU_OFFSET_X, click_y + MENU_OFFSET_Y)
+            pyautogui.moveTo(NAME_CROP_X1, NAME_CROP_Y2 + 200, duration=MOVE_DURATION)
             time.sleep(1.2)
 
-            # OCR — always returns full dict, nulls for missing fields
+            # OCR
             log_data = ocr_activity_log(name)
             log_data["player_name"] = name
 
@@ -289,12 +308,13 @@ def scrape_regiment() -> pd.DataFrame:
             else:
                 log.info(f"  ✓ '{name}' fully captured.")
 
-            records.append(log_data)
+            # Write immediately to CSV
+            append_to_csv(log_data, OUTPUT_CSV)
             seen_names.add(name)
+            total_written += 1
 
-            # Close log, reopen regiment screen, restore scroll position
+            # Close log and reopen regiment screen
             close_activity_log()
-            # scroll_to_page(page)
 
         # Advance to next page
         log.info(f"Page {page} complete. Scrolling to page {page + 1}...")
@@ -306,20 +326,14 @@ def scrape_regiment() -> pd.DataFrame:
     # ----------------------------
     log.info("=" * 40)
     log.info("Scrape complete.")
-    log.info(f"  Total processed : {len(seen_names)}")
-    log.info(f"  Fully captured  : {len(records) - len(partial_names)}")
-    log.info(f"  Partial (nulls) : {len(partial_names)}")
+    log.info(f"  Written this run : {total_written}")
+    log.info(f"  Total in CSV     : {len(seen_names)}")
+    log.info(f"  Partial (nulls)  : {len(partial_names)}")
     if partial_names:
         log.warning("  Partial players:")
         for name, count in partial_names:
             log.warning(f"    - {name}: {count} null field(s)")
-
-    df = pd.DataFrame(records)
-    output_file = f"regiment_activity_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-    df.to_csv(output_file, index=False)
-    log.info(f"Saved to {output_file}")
-
-    return df
+    log.info(f"  Output file      : {OUTPUT_CSV}")
 
 
 # ----------------------------
