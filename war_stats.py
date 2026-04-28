@@ -31,7 +31,7 @@ log = logging.getLogger(__name__)
 # ----------------------------
 # CALIBRATION CONSTANTS
 # ----------------------------
-NAME_CROP_X1 = 940
+NAME_CROP_X1 = 945
 NAME_CROP_Y1 = 335
 NAME_CROP_X2 = 1145
 NAME_CROP_Y2 = 675
@@ -45,7 +45,7 @@ LOG_CROP_X2 = 1250
 LOG_CROP_Y2 = 650
 
 MOVE_DURATION = 0.2
-SCROLLS_PER_PAGE = 1316
+SCROLLS_PER_PAGE = 1314
 
 # Fixed output file — same file every run so resume works
 OUTPUT_CSV = "regiment_activity.csv"
@@ -72,26 +72,66 @@ EXPECTED_KEYS = [
 # ----------------------------
 # CSV HELPERS
 # ----------------------------
-def load_seen_names(csv_path: str) -> set:
-    """Load already-processed player names from existing CSV."""
+def load_seen_names(csv_path: str) -> tuple[set, set]:
+    """
+    Load already-processed player names from existing CSV.
+    Returns (seen_names, partial_names) where partial_names are
+    players with any None values that should be rescanned.
+    """
     if not os.path.exists(csv_path):
         log.info(f"No existing CSV found at '{csv_path}', starting fresh.")
-        return set()
+        return set(), set()
     df = pd.read_csv(csv_path)
     if "player_name" not in df.columns:
         log.warning("CSV exists but has no 'player_name' column, starting fresh.")
-        return set()
-    names = set(df["player_name"].dropna().tolist())
-    log.info(f"Loaded {len(names)} already-processed players from '{csv_path}'.")
-    return names
+        return set(), set()
+    all_names = set(df["player_name"].dropna().tolist())
+    # Players with any None/NaN fields need to be rescanned
+    has_nulls = df[df.isnull().any(axis=1)]["player_name"].dropna().tolist()
+    rescan_names = set(has_nulls)
+    complete_names = all_names - rescan_names
+    log.info(f"Loaded {len(all_names)} players from '{csv_path}'.")
+    if rescan_names:
+        log.info(f"  {len(complete_names)} complete, {len(rescan_names)} will be rescanned (have nulls).")
+    return complete_names, rescan_names
 
 
-def append_to_csv(record: dict, csv_path: str):
-    """Append a single record to CSV, writing header only if file doesn't exist yet."""
-    df = pd.DataFrame([record])
-    write_header = not os.path.exists(csv_path)
-    df.to_csv(csv_path, mode="a", header=write_header, index=False)
-    log.debug(f"Written '{record['player_name']}' to CSV.")
+# ----------------------------
+# FUZZY NAME MATCHING
+# ----------------------------
+NAME_MATCH_CUTOFF = 0.85  # tune lower if too strict, higher if too lenient
+
+def is_already_seen(name: str, seen_names: set, rescan_names: set) -> bool:
+    """
+    Returns True only if name fuzzy-matches a COMPLETE (no nulls) record.
+    Players in rescan_names are not skipped — they need to be reprocessed.
+    """
+    match = get_close_matches(name, seen_names | rescan_names, n=1, cutoff=NAME_MATCH_CUTOFF)
+    if not match:
+        return False
+    matched = match[0]
+    if matched in rescan_names:
+        log.debug(f"'{name}' matched '{matched}' which has nulls — will rescan.")
+        return False
+    log.debug(f"'{name}' matched complete record '{matched}' — skipping.")
+    return True
+
+
+def append_to_csv(record: dict, csv_path: str, overwrite_name: str = None):
+    """
+    Append a single record to CSV.
+    If overwrite_name is set, removes the existing row for that player first.
+    """
+    if overwrite_name and os.path.exists(csv_path):
+        existing = pd.read_csv(csv_path)
+        existing = existing[existing["player_name"] != overwrite_name]
+        existing.to_csv(csv_path, index=False)
+        pd.DataFrame([record]).to_csv(csv_path, mode="a", header=False, index=False)
+        log.debug(f"Overwrote existing row for '{record['player_name']}' in CSV.")
+    else:
+        write_header = not os.path.exists(csv_path)
+        pd.DataFrame([record]).to_csv(csv_path, mode="a", header=write_header, index=False)
+        log.debug(f"Written '{record['player_name']}' to CSV.")
 
 
 # ----------------------------
@@ -260,7 +300,7 @@ def scrape_regiment():
     log.info("Foxhole window focused.")
 
     # Load already-processed names from CSV to allow resuming
-    seen_names = load_seen_names(OUTPUT_CSV)
+    seen_names, rescan_names = load_seen_names(OUTPUT_CSV)
 
     partial_names = []
     total_written = 0
@@ -270,11 +310,13 @@ def scrape_regiment():
         log.info(f"=== Page {page} ===")
 
         players = get_visible_players()
-        new_players = [p for p in players if p["name"] not in seen_names]
+        new_players = [p for p in players if not is_already_seen(p["name"], seen_names, rescan_names)]
 
         if not new_players:
-            log.info("No new players detected. End of regiment list reached.")
-            break
+            log.info("No new players detected on this page, scrolling down...")
+            scroll_down_one_page()
+            page += 1
+            continue
 
         skipped = len(players) - len(new_players)
         if skipped:
@@ -297,20 +339,37 @@ def scrape_regiment():
             pyautogui.moveTo(NAME_CROP_X1, NAME_CROP_Y2 + 200, duration=MOVE_DURATION)
             time.sleep(1.2)
 
-            # OCR
+            # First OCR attempt
             log_data = ocr_activity_log(name)
-            log_data["player_name"] = name
 
             null_count = sum(1 for v in log_data.values() if v is None)
+            if null_count > 0:
+                log.warning(f"  {null_count} null(s) on first attempt for '{name}', rescanning...")
+                time.sleep(0.5)
+                retry_data = ocr_activity_log(name)
+                retry_nulls = sum(1 for v in retry_data.values() if v is None)
+
+                # Use whichever attempt got more fields
+                if retry_nulls < null_count:
+                    log.info(f"  Rescan improved: {null_count} -> {retry_nulls} null(s).")
+                    log_data = retry_data
+                    null_count = retry_nulls
+                else:
+                    log.warning(f"  Rescan did not improve ({retry_nulls} null(s)), keeping first result.")
+
+            log_data["player_name"] = name
+
             if null_count > 0:
                 partial_names.append((name, null_count))
                 log.warning(f"  ✓ (partial) '{name}' saved with {null_count} null field(s).")
             else:
                 log.info(f"  ✓ '{name}' fully captured.")
 
-            # Write immediately to CSV
-            append_to_csv(log_data, OUTPUT_CSV)
+            # Write immediately to CSV, overwriting if this was a rescan
+            is_rescan = is_already_seen(name, set(), rescan_names) == False and name in rescan_names
+            append_to_csv(log_data, OUTPUT_CSV, overwrite_name=name if is_rescan else None)
             seen_names.add(name)
+            rescan_names.discard(name)
             total_written += 1
 
             # Close log and reopen regiment screen
