@@ -25,7 +25,7 @@ log_crop_y2 = 650
 
 [timing]
 move_duration = 0.2
-delay_window_focus = 1.0
+delay_window_focus = 3.0
 delay_click = 0.4
 delay_log_open = 1.2
 delay_retry = 0.5

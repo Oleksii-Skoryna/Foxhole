@@ -2,10 +2,27 @@ import logging
 import time
 
 import pyautogui
+import pygetwindow as gw
 
 from .config import cfg
 
 logger = logging.getLogger(__name__)
+
+
+_GAME_TITLE = "War"
+
+
+def focus_game_window() -> None:
+    windows = [w for w in gw.getAllWindows() if w.title.strip() == _GAME_TITLE]
+    if not windows:
+        raise RuntimeError(
+            f"Foxhole window not found (title: '{_GAME_TITLE}'). "
+            "Make sure the game is running."
+        )
+    win = windows[0]
+    win.minimize()
+    win.restore()
+    time.sleep(cfg.timing.delay_window_focus)
 
 
 def smooth_click(x: int, y: int) -> None:

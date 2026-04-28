@@ -1,17 +1,18 @@
 import logging
+import sys
 import time
 from datetime import datetime
-
-import pygetwindow as gw
 
 from foxhole import (
     append_to_csv,
     cfg,
     close_activity_log,
+    focus_game_window,
     get_visible_players,
     is_already_seen,
     load_seen_names,
     ocr_activity_log,
+    open_regiment_screen,
     scroll_down_one_page,
     smooth_click,
     smooth_move,
@@ -33,13 +34,10 @@ def _setup_logging() -> None:
 
 def scrape_regiment() -> None:
     logger.info("Focusing Foxhole window...")
-    windows = gw.getWindowsWithTitle("War")
-    if not windows:
-        logger.error("Foxhole window not found. Make sure the game is running.")
-        return
-    windows[0].activate()
-    time.sleep(cfg.timing.delay_window_focus)
+    focus_game_window()
+    open_regiment_screen()
     logger.info("Foxhole window focused.")
+
 
     csv_path = cfg.paths.output / cfg.output.csv
     seen_names, rescan_names = load_seen_names(csv_path)
@@ -131,6 +129,10 @@ def scrape_regiment() -> None:
 
 if __name__ == "__main__":
     _setup_logging()
-    logger.info("Starting in 5 seconds — switch to Foxhole and open the regiment screen...")
-    time.sleep(5)
-    scrape_regiment()
+    try:
+        logger.info("Starting in 5 seconds — switch to Foxhole and open the regiment screen...")
+        time.sleep(5)
+        scrape_regiment()
+    except RuntimeError as e:
+        logger.error(str(e))
+        sys.exit(1)
