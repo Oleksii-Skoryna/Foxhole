@@ -1,0 +1,59 @@
+[paths]
+output = "output"
+logs   = "logs"
+debug  = "debug"
+
+[output]
+csv = "regiment_activity.csv"
+
+[screen]
+# Name list column crop region
+name_crop_x1 = 945
+name_crop_y1 = 335
+name_crop_x2 = 1145
+name_crop_y2 = 675
+
+# Context menu offset from the player row click point
+menu_offset_x = 32
+menu_offset_y = 42
+
+# Activity log panel crop region
+log_crop_x1 = 660
+log_crop_y1 = 125
+log_crop_x2 = 1250
+log_crop_y2 = 650
+
+[timing]
+move_duration = 0.2
+delay_window_focus = 1.0
+delay_click = 0.4
+delay_log_open = 1.2
+delay_retry = 0.5
+delay_scroll = 0.3
+delay_keypress = 0.3
+delay_regiment_open = 0.5
+
+[ocr]
+name_crop_padding = 10
+name_match_cutoff = 0.85
+key_match_cutoff = 0.7
+scrolls_per_page = 1313
+click_y_offset = 6
+mouse_park_y_offset = 200
+expected_keys = [
+    "Enemy Player Damage",
+    "Friendly Player Damage",
+    "Enemy Structure/Vehicle Damage",
+    "Friendly Structure/Vehicle Damage",
+    "Friendly Construction",
+    "Friendly Repairing",
+    "Friendly Healing",
+    "Friendly Revivals",
+    "Vehicles Captured By Enemy",
+    "Vehicle Self Damage (Neutral)",
+    "Vehicle Self Damage (Colonial)",
+    "Vehicle Self Damage (Warden)",
+    "Materials Submitted",
+    "Materials Gathered",
+    "Supply Value Delivered",
+]
