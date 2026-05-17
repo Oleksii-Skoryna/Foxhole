@@ -1,15 +1,38 @@
 import logging
+import threading
 import time
 
 import pyautogui
 import pygetwindow as gw
+from pynput import keyboard
 
 from .config import cfg
 
 logger = logging.getLogger(__name__)
 
-
 _GAME_TITLE = "War"
+
+
+class SpaceInterrupt:
+    def __init__(self):
+        self._event = threading.Event()
+        self._listener = keyboard.Listener(on_press=self._on_press)
+
+    def _on_press(self, key):
+        if key == keyboard.Key.space:
+            self._event.set()
+
+    def start(self):
+        self._listener.start()
+        print("Press SPACE to stop.")
+        return self
+
+    def wait(self, timeout=None):
+        """Block until space is pressed or timeout expires. Returns True if triggered."""
+        return self._event.wait(timeout)
+
+    def stop(self):
+        self._listener.stop()
 
 
 def focus_game_window() -> None:

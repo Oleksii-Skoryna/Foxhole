@@ -20,6 +20,9 @@ from foxhole import (
 
 logger = logging.getLogger(__name__)
 
+_MIN_PLAYERS = 10
+_MAX_SCAN_RETRIES = 3
+
 
 def _setup_logging() -> None:
     cfg.paths.logs.mkdir(exist_ok=True)
@@ -50,6 +53,13 @@ def scrape_regiment() -> None:
         while True:
             logger.info(f"=== Page {page} ===")
             players = get_visible_players()
+            for attempt in range(1, _MAX_SCAN_RETRIES):
+                if len(players) >= _MIN_PLAYERS:
+                    break
+                logger.warning(f"Only {len(players)} player(s) detected (expected ≥{_MIN_PLAYERS}), rescanning... ({attempt + 1}/{_MAX_SCAN_RETRIES})")
+                time.sleep(cfg.timing.delay_retry)
+                players = get_visible_players()
+
             all_seen = seen_names | rescan_names
             new_players = [
                 p for p in players
