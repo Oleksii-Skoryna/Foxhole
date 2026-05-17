@@ -23,6 +23,12 @@ log_crop_y1 = 125
 log_crop_x2 = 1250
 log_crop_y2 = 650
 
+# Regiment member count text (header just above the name list — tune with debug/grab_member_count.png)
+member_count_crop_x1 = 945
+member_count_crop_y1 = 290
+member_count_crop_x2 = 1145
+member_count_crop_y2 = 335
+
 [timing]
 move_duration = 0.2
 delay_window_focus = 3.0

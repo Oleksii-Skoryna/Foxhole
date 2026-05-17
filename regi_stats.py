@@ -3,16 +3,21 @@ import sys
 import time
 from datetime import datetime
 
+import pyautogui
+
 from foxhole import (
     append_to_csv,
     cfg,
     close_activity_log,
+    find_activity_log_button,
     focus_game_window,
+    get_regiment_member_count,
     get_visible_players,
     is_already_seen,
     load_seen_names,
     ocr_activity_log,
     open_regiment_screen,
+    save_screenshot,
     scroll_down_one_page,
     smooth_click,
     smooth_move,
@@ -44,6 +49,13 @@ def scrape_regiment() -> None:
 
     csv_path = cfg.paths.output / cfg.output.csv
     seen_names, rescan_names = load_seen_names(csv_path)
+
+    member_count = get_regiment_member_count()
+    if member_count is not None and len(seen_names) >= member_count:
+        logger.info(f"CSV already has {len(seen_names)} entries and regiment has {member_count} members — nothing to do.")
+        return
+    if member_count is not None:
+        logger.info(f"Regiment has {member_count} members, {len(seen_names)} already captured, {member_count - len(seen_names)} remaining.")
     partial_names: list[tuple[str, int]] = []
     total_written = 0
     page = 0
@@ -85,8 +97,20 @@ def scrape_regiment() -> None:
 
                 smooth_click(click_x, click_y)
                 time.sleep(cfg.timing.delay_click)
+                save_screenshot("grab_context_menu")
 
-                smooth_click(click_x + cfg.screen.menu_offset_x, click_y + cfg.screen.menu_offset_y)
+                btn = find_activity_log_button(click_x, click_y)
+                if btn is None:
+                    logger.warning(f"  Button not found, retrying...")
+                    time.sleep(cfg.timing.delay_retry)
+                    btn = find_activity_log_button(click_x, click_y)
+                if btn is None:
+                    logger.error(f"  Could not find Activity Log button for '{name}', skipping.")
+                    pyautogui.press("escape")
+                    time.sleep(cfg.timing.delay_keypress)
+                    continue
+
+                smooth_click(*btn)
                 smooth_move(cfg.screen.name_crop_x1, cfg.screen.name_crop_y2 + cfg.ocr.mouse_park_y_offset)
                 time.sleep(cfg.timing.delay_log_open)
 

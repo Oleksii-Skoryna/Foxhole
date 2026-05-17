@@ -29,6 +29,10 @@ class ScreenConfig(BaseModel):
     log_crop_y1: int
     log_crop_x2: int
     log_crop_y2: int
+    member_count_crop_x1: int
+    member_count_crop_y1: int
+    member_count_crop_x2: int
+    member_count_crop_y2: int
 
 
 class TimingConfig(BaseModel):
