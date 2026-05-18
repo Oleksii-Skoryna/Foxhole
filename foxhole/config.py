@@ -5,6 +5,7 @@ except ImportError:
 
 from pathlib import Path
 
+import pyautogui
 from pydantic import BaseModel, Field, ValidationError
 
 
@@ -16,6 +17,11 @@ class PathsConfig(BaseModel):
 
 class OutputConfig(BaseModel):
     csv: str
+
+
+class DisplayConfig(BaseModel):
+    reference_width: int = Field(gt=0)
+    reference_height: int = Field(gt=0)
 
 
 class ScreenConfig(BaseModel):
@@ -44,24 +50,60 @@ class TimingConfig(BaseModel):
     delay_scroll: float = Field(ge=0)
     delay_keypress: float = Field(ge=0)
     delay_regiment_open: float = Field(ge=0)
+    startup_delay: float = Field(ge=0)
 
 
 class OcrConfig(BaseModel):
     name_crop_padding: int = Field(ge=0)
+    name_conf_threshold: int = Field(ge=0, le=100)
     name_match_cutoff: float = Field(ge=0.0, le=1.0)
     key_match_cutoff: float = Field(ge=0.0, le=1.0)
     scrolls_per_page: int = Field(gt=0)
+    scroll_to_top_multiplier: int = Field(gt=0)
     click_y_offset: int
     mouse_park_y_offset: int
+    min_players_per_page: int = Field(gt=0)
+    max_scan_retries: int = Field(gt=0)
+    context_menu_search_w: int = Field(gt=0)
+    context_menu_search_h: int = Field(gt=0)
+    button_match_threshold: float = Field(ge=0.0, le=1.0)
     expected_keys: list[str]
 
 
 class AppConfig(BaseModel):
     paths: PathsConfig
     output: OutputConfig
+    display: DisplayConfig
     screen: ScreenConfig
     timing: TimingConfig
     ocr: OcrConfig
+
+
+def _scale_to_screen(config: AppConfig) -> AppConfig:
+    sw, sh = pyautogui.size()
+    sx = sw / config.display.reference_width
+    sy = sh / config.display.reference_height
+    if sx == 1.0 and sy == 1.0:
+        return config
+
+    screen_data = {}
+    for field, value in config.screen.model_dump().items():
+        if '_x' in field:
+            screen_data[field] = round(value * sx)
+        elif '_y' in field:
+            screen_data[field] = round(value * sy)
+        else:
+            screen_data[field] = value
+
+    ocr_data = config.ocr.model_dump()
+    ocr_data['name_crop_padding']   = round(ocr_data['name_crop_padding']   * sx)
+    ocr_data['click_y_offset']      = round(ocr_data['click_y_offset']      * sy)
+    ocr_data['mouse_park_y_offset'] = round(ocr_data['mouse_park_y_offset'] * sy)
+
+    return config.model_copy(update={
+        'screen': ScreenConfig(**screen_data),
+        'ocr':    OcrConfig(**ocr_data),
+    })
 
 
 def _load(path: Path = Path(__file__).parent.parent / "config.toml") -> AppConfig:
@@ -71,7 +113,7 @@ def _load(path: Path = Path(__file__).parent.parent / "config.toml") -> AppConfi
     except FileNotFoundError:
         raise FileNotFoundError(f"config.toml not found at {path}")
     try:
-        return AppConfig(**raw)
+        return _scale_to_screen(AppConfig(**raw))
     except ValidationError as e:
         raise ValueError(f"Invalid config.toml:\n{e}") from e
 

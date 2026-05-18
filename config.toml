@@ -6,8 +6,12 @@ debug  = "debug"
 [output]
 csv = "regiment_activity.csv"
 
+[display]
+# Resolution these coordinates were calibrated on; all pixel values are auto-scaled at runtime
+reference_width  = 1920
+reference_height = 1080
+
 [screen]
-# Name list column crop region
 name_crop_x1 = 945
 name_crop_y1 = 335
 name_crop_x2 = 1145
@@ -17,35 +21,44 @@ name_crop_y2 = 675
 menu_offset_x = 32
 menu_offset_y = 42
 
-# Activity log panel crop region
 log_crop_x1 = 660
 log_crop_y1 = 125
 log_crop_x2 = 1250
 log_crop_y2 = 650
 
-# Regiment member count text (header just above the name list — tune with debug/grab_member_count.png)
+# Tune using debug/grab_member_count.png
 member_count_crop_x1 = 945
 member_count_crop_y1 = 290
 member_count_crop_x2 = 1145
 member_count_crop_y2 = 335
 
 [timing]
-move_duration = 0.2
-delay_window_focus = 3.0
-delay_click = 0.4
-delay_log_open = 1.2
-delay_retry = 0.5
-delay_scroll = 0.3
-delay_keypress = 0.3
-delay_regiment_open = 0.5
+move_duration        = 0.2
+delay_window_focus   = 3.0
+delay_click          = 0.4
+delay_log_open       = 1.2
+delay_retry          = 0.5
+delay_scroll         = 0.3
+delay_keypress       = 0.3
+delay_regiment_open  = 0.5
+startup_delay        = 5.0
 
 [ocr]
-name_crop_padding = 10
-name_match_cutoff = 0.85
-key_match_cutoff = 0.7
-scrolls_per_page = 1313
-click_y_offset = 6
-mouse_park_y_offset = 200
+name_crop_padding        = 10
+name_conf_threshold      = 30
+name_match_cutoff        = 0.85
+key_match_cutoff         = 0.7
+scrolls_per_page         = 1313
+scroll_to_top_multiplier = 100
+click_y_offset           = 6
+mouse_park_y_offset      = 200
+min_players_per_page     = 10
+max_scan_retries         = 3
+# Context menu search window size (pixels at reference resolution)
+context_menu_search_w    = 230
+context_menu_search_h    = 200
+# Template match confidence threshold for the Activity Log button (0–1)
+button_match_threshold   = 0.7
 expected_keys = [
     "Enemy Player Damage",
     "Friendly Player Damage",

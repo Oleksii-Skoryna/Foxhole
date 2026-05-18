@@ -36,6 +36,7 @@ class SpaceInterrupt:
 
 
 def focus_game_window() -> None:
+    """Bring the game window to the foreground via minimize/restore."""
     windows = [w for w in gw.getAllWindows() if w.title.strip() == _GAME_TITLE]
     if not windows:
         raise RuntimeError(
@@ -65,6 +66,15 @@ def scroll_down_one_page() -> None:
     cy = (cfg.screen.name_crop_y1 + cfg.screen.name_crop_y2) // 2
     smooth_move(cx, cy)
     pyautogui.scroll(-cfg.ocr.scrolls_per_page)
+    time.sleep(cfg.timing.delay_scroll)
+
+
+def scroll_to_top() -> None:
+    logger.debug("Scrolling to top of regiment list...")
+    cx = (cfg.screen.name_crop_x1 + cfg.screen.name_crop_x2) // 2
+    cy = (cfg.screen.name_crop_y1 + cfg.screen.name_crop_y2) // 2
+    smooth_move(cx, cy)
+    pyautogui.scroll(cfg.ocr.scrolls_per_page * cfg.ocr.scroll_to_top_multiplier)
     time.sleep(cfg.timing.delay_scroll)
 
 

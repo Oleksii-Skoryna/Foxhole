@@ -19,14 +19,12 @@ from foxhole import (
     open_regiment_screen,
     save_screenshot,
     scroll_down_one_page,
+    scroll_to_top,
     smooth_click,
     smooth_move,
 )
 
 logger = logging.getLogger(__name__)
-
-_MIN_PLAYERS = 10
-_MAX_SCAN_RETRIES = 3
 
 
 def _setup_logging() -> None:
@@ -55,7 +53,10 @@ def scrape_regiment() -> None:
         logger.info(f"CSV already has {len(seen_names)} entries and regiment has {member_count} members — nothing to do.")
         return
     if member_count is not None:
-        logger.info(f"Regiment has {member_count} members, {len(seen_names)} already captured, {member_count - len(seen_names)} remaining.")
+        remaining = member_count - len(seen_names)
+        logger.info(f"Regiment has {member_count} members, {len(seen_names)} already captured, {remaining} remaining.")
+        logger.info("Scrolling to top before scan...")
+        scroll_to_top()
     partial_names: list[tuple[str, int]] = []
     total_written = 0
     page = 0
@@ -65,10 +66,10 @@ def scrape_regiment() -> None:
         while True:
             logger.info(f"=== Page {page} ===")
             players = get_visible_players()
-            for attempt in range(1, _MAX_SCAN_RETRIES):
-                if len(players) >= _MIN_PLAYERS:
+            for attempt in range(1, cfg.ocr.max_scan_retries):
+                if len(players) >= cfg.ocr.min_players_per_page:
                     break
-                logger.warning(f"Only {len(players)} player(s) detected (expected ≥{_MIN_PLAYERS}), rescanning... ({attempt + 1}/{_MAX_SCAN_RETRIES})")
+                logger.warning(f"Only {len(players)} player(s) detected (expected ≥{cfg.ocr.min_players_per_page}), rescanning... ({attempt + 1}/{cfg.ocr.max_scan_retries})")
                 time.sleep(cfg.timing.delay_retry)
                 players = get_visible_players()
 
@@ -164,8 +165,8 @@ def scrape_regiment() -> None:
 if __name__ == "__main__":
     _setup_logging()
     try:
-        logger.info("Starting in 5 seconds — switch to Foxhole and open the regiment screen...")
-        time.sleep(5)
+        logger.info(f"Starting in {cfg.timing.startup_delay:.0f} seconds — switch to Foxhole and open the regiment screen...")
+        time.sleep(cfg.timing.startup_delay)
         scrape_regiment()
     except RuntimeError as e:
         logger.error(str(e))

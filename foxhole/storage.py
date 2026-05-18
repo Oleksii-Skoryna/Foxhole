@@ -1,16 +1,17 @@
 import logging
-import os
-from difflib import get_close_matches
+from pathlib import Path
 
 import pandas as pd
+from difflib import get_close_matches
 
 from .config import cfg
 
 logger = logging.getLogger(__name__)
 
 
-def load_seen_names(csv_path: str) -> tuple[set, set]:
-    if not os.path.exists(csv_path):
+def load_seen_names(csv_path: Path) -> tuple[set, set]:
+    """Load player names from CSV, returning (complete, needs_rescan) name sets."""
+    if not csv_path.exists():
         logger.info(f"No existing CSV at '{csv_path}', starting fresh.")
         return set(), set()
 
@@ -35,6 +36,7 @@ def load_seen_names(csv_path: str) -> tuple[set, set]:
 
 
 def is_already_seen(name: str, seen_names: set, rescan_names: set, all_seen: set = None) -> bool:
+    """Return True if name fuzzy-matches a complete record; False if unseen or flagged for rescan."""
     candidates = all_seen if all_seen is not None else seen_names | rescan_names
     match = get_close_matches(name, candidates, n=1, cutoff=cfg.ocr.name_match_cutoff)
     if not match:
@@ -47,14 +49,15 @@ def is_already_seen(name: str, seen_names: set, rescan_names: set, all_seen: set
     return True
 
 
-def append_to_csv(record: dict, csv_path: str, overwrite_name: str = None) -> None:
-    if overwrite_name and os.path.exists(csv_path):
+def append_to_csv(record: dict, csv_path: Path, overwrite_name: str = None) -> None:
+    """Append record to CSV, replacing the existing row if overwrite_name is given."""
+    if overwrite_name and csv_path.exists():
         df = pd.read_csv(csv_path)
         df = df[df["player_name"] != overwrite_name]
         df.to_csv(csv_path, index=False)
         pd.DataFrame([record]).to_csv(csv_path, mode="a", header=False, index=False)
         logger.debug(f"Overwrote row for '{record['player_name']}'.")
     else:
-        write_header = not os.path.exists(csv_path)
+        write_header = not csv_path.exists()
         pd.DataFrame([record]).to_csv(csv_path, mode="a", header=write_header, index=False)
         logger.debug(f"Appended '{record['player_name']}'.")

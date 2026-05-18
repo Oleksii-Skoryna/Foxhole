@@ -6,7 +6,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pandas as pd
 from foxhole import cfg, ocr_activity_log
-
+# FOR manually adding players to the csv, open activity log of the person, change variable to username , will improve later
 PLAYER_NAME = "Secret_Operations2"
 
 print("Starting in 5 seconds, open the activity log in game...")
